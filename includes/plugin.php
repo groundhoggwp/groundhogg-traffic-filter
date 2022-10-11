@@ -44,7 +44,7 @@ class Plugin extends Extension {
 	 * @return int
 	 */
 	public function get_download_id() {
-		// TODO: Implement get_download_id() method.
+		return 135217;
 	}
 
 	/**
