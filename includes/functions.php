@@ -95,7 +95,7 @@ add_filter( 'groundhogg/admin/gh_tools/install_traffic_filter_process', function
 	if ( current_user_can( 'manage_options' ) ) {
 		install_traffic_filter_file();
 
-		notices()->add( 'success', __( 'Traffic filter installed!' ) );
+		notices()->add( 'success', __( 'Traffic filter installed!', 'groundhogg-tracking-filter' ) );
 	}
 
 	return true;
@@ -107,7 +107,7 @@ add_filter( 'groundhogg/admin/gh_tools/remove_traffic_filter_process', function 
 	if ( current_user_can( 'manage_options' ) ) {
 		remove_traffic_filter_file();
 
-		notices()->add( 'success', __( 'Traffic filter removed!' ) );
+		notices()->add( 'success', __( 'Traffic filter removed!', 'groundhogg-tracking-filter' ) );
 	}
 
 	return true;
@@ -126,27 +126,27 @@ function show_install_traffic_filter_tool() {
 
     <div class="gh-panel">
         <div class="gh-panel-header">
-            <h2><?php _e( 'Install Traffic Filter', 'groundhogg' ); ?></h2>
+            <h2><?php _e( 'Install Traffic Filter', 'groundhogg-tracking-filter' ); ?></h2>
         </div>
         <div class="inside">
-            <p><?php _e( 'Creates a special file that is loaded before WordPress and will automatically filter out potentially fake opens and clicks when tracking email engagement.', 'groundhogg' ); ?></p>
+            <p><?php _e( 'Creates a special file that is loaded before WordPress and will automatically filter out potentially fake opens and clicks when tracking email engagement.', 'groundhogg-tracking-filter' ); ?></p>
 			<?php if ( ! is_traffic_filter_installed() ): ?>
                 <p><?php echo html()->e( 'a', [
 						'class' => 'gh-button secondary',
 						'href'  => action_url( 'install_traffic_filter' ),
-					], __( 'Install Filter', 'groundhogg' ) ) ?></p>
+					], __( 'Install Filter', 'groundhogg-tracking-filter' ) ) ?></p>
 			<?php else: ?>
                 <p class="display-flex gap-10"><?php
 
 					echo html()->e( 'a', [
 						'class' => 'gh-button secondary',
 						'href'  => action_url( 'install_traffic_filter' ),
-					], __( 'Re-Install Filter', 'groundhogg' ) );
+					], __( 'Re-Install Filter', 'groundhogg-tracking-filter' ) );
 
 					echo html()->e( 'a', [
 						'class' => 'gh-button danger',
 						'href'  => action_url( 'remove_traffic_filter' ),
-					], __( 'Remove Filter', 'groundhogg' ) )
+					], __( 'Remove Filter', 'groundhogg-tracking-filter' ) )
 
 					?></p>
 			<?php endif; ?>
@@ -178,10 +178,13 @@ function add_bot_trap_link_to_emails() {
 		'font-size'       => '1px'
 	];
 
+    $preview_text = apply_filters( 'groundhogg/email_template/pre_header_text', '' );
+    $trap_text    = empty( $preview_text ) ? '' : '&nbsp;-&nbsp;';
+
 	?>
     <div style="display: none">
         <a style="<?php echo array_to_css( $style ); ?>"
-           href="<?php echo $link ?>"><?php echo get_bloginfo( 'name' ); ?></a>
+           href="<?php echo $link ?>"><?php echo $trap_text; ?></a>
     </div>
 	<?php
 }
