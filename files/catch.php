@@ -12,7 +12,10 @@ if ( ! file_exists( __DIR__ . '/../wp-config.php' ) || basename( __DIR__ ) !== '
 
 ### REPLACE ###
 const GH_LOGO_SRC       = '';
+const GH_DOCUMENT_TITLE             = 'Traffic Filter';
 const GH_REDIRECT_DELAY = 3;
+const GH_AUTOMATIC_REDIRECTION_TEXT = 'You will be redirected in %s seconds.';
+const GH_CLICK_TO_CONTINUE_TEXT     = 'Or click <a href="%1$s">here</a> to continue to %2$s.';
 ### END REPLACE ###
 
 $user_agent             = $_SERVER['HTTP_USER_AGENT'];
@@ -31,7 +34,7 @@ http_response_code( 200 );
     <!doctype html>
     <html>
     <head>
-        <title>Traffic Filter</title>
+        <title><?php echo GH_DOCUMENT_TITLE; ?></title>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="robots" content="noindex">
@@ -115,12 +118,10 @@ http_response_code( 200 );
 	<?php if ( GH_LOGO_SRC ): ?>
         <img id="logo" src="<?php echo GH_LOGO_SRC ?>">
 	<?php endif; ?>
-    <div id="main">
-        <p>You will be automatically redirected in <span id="delay"><?php echo GH_REDIRECT_DELAY ?></span> seconds.
-        </p>
-    </div>
-    <p>Or <a href="/">click here</a> to continue
-        to <?php echo parse_url( $full_url, PHP_URL_HOST ) ?>.</p>
+	<div id="main">
+		<p><?php printf( GH_AUTOMATIC_REDIRECTION_TEXT, sprintf( '<span id="delay">%s</span>', GH_REDIRECT_DELAY ) ); ?></p>
+	</div>
+	<p><?php printf( GH_CLICK_TO_CONTINUE_TEXT, '/', parse_url( $full_url, PHP_URL_HOST ) ); ?></p>
     </body>
     </html>
 <?php

@@ -17,9 +17,12 @@ if ( ! file_exists( __DIR__ . '/../wp-config.php' ) || basename( __DIR__ ) !== '
 }
 
 ### REPLACE ###
-const GH_LOGO_SRC       = '';
-const GH_REDIRECT_DELAY = 3;
-const GH_VERIFIED_PARAM = '__verified';
+const GH_LOGO_SRC                   = '';
+const GH_DOCUMENT_TITLE             = 'Traffic Filter';
+const GH_REDIRECT_DELAY             = 3;
+const GH_VERIFIED_PARAM             = '__verified';
+const GH_AUTOMATIC_REDIRECTION_TEXT = 'You will be redirected in %s seconds.';
+const GH_CLICK_TO_CONTINUE_TEXT     = 'Or click <a href="%1$s">here</a> to continue to %2$s.';
 ### END REPLACE ###
 
 /**
@@ -42,15 +45,15 @@ function groundhogg_show_redirect_page() {
 	http_response_code( 200 );
 
 	?>
-    <!doctype html>
-    <html>
-    <head>
-        <title>Traffic Filter</title>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <meta name="robots" content="noindex">
-        <meta name='robots' content='noindex, follow'>
-        <script>
+	<!doctype html>
+	<html>
+	<head>
+		<title><?php echo GH_DOCUMENT_TITLE; ?></title>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<meta name="robots" content="noindex">
+		<meta name='robots' content='noindex, follow'>
+		<script>
           window.addEventListener('load', () => {
             console.log('Loaded!')
 
@@ -78,8 +81,8 @@ function groundhogg_show_redirect_page() {
             })
 
           })
-        </script>
-        <style>
+		</script>
+		<style>
             html {
                 background-color: #F6F9FB;
                 position: initial !important;
@@ -123,19 +126,18 @@ function groundhogg_show_redirect_page() {
                 font-size: 14px;
             }
 
-        </style>
-    </head>
-    <body>
+		</style>
+	</head>
+	<body>
 	<?php if ( GH_LOGO_SRC ): ?>
-        <img id="logo" src="<?php echo GH_LOGO_SRC ?>">
+		<img id="logo" src="<?php echo GH_LOGO_SRC ?>">
 	<?php endif; ?>
-    <div id="main">
-        <p>You will be automatically redirected in <span id="delay"><?php echo GH_REDIRECT_DELAY ?></span> seconds.</p>
-    </div>
-    <p>Or <a href="?<?php echo GH_VERIFIED_PARAM ?>=true">click here</a> to continue
-        to <?php echo parse_url( $full_url, PHP_URL_HOST ) ?>.</p>
-    </body>
-    </html>
+	<div id="main">
+		<p><?php printf( GH_AUTOMATIC_REDIRECTION_TEXT, sprintf( '<span id="delay">%s</span>', GH_REDIRECT_DELAY ) ); ?></p>
+	</div>
+	<p><?php printf( GH_CLICK_TO_CONTINUE_TEXT, '?' . GH_VERIFIED_PARAM . '=true', parse_url( $full_url, PHP_URL_HOST ) ); ?></p>
+	</body>
+	</html>
 	<?php
 
 	die();
@@ -166,6 +168,13 @@ function groundhogg_user_agent_is( $agent ) {
 }
 
 /**
+ * Include the WordPress code index.php file
+ */
+function groundhogg_load_wp() {
+	include __DIR__ . '/../index.php';
+}
+
+/**
  * Perform checks on the current request to test if bot or real user
  * If checks pass, include the main WordPress index.php file
  * Otherwise, show either the redirect page or the image pixel
@@ -176,18 +185,32 @@ function groundhogg_check_if_crawler_or_include_index() {
 
 	$request = $_SERVER['REQUEST_URI'];
 
-	if ( strpos( $request, 'gh/tracking/email' ) === false ) {
-		include __DIR__ . '/../index.php';
+	$needles = [
+		'/gh/tracking/email/',
+		'/gh/c/',
+		'/gh/o/',
+	];
+
+	if ( ! preg_match( '@' . implode( '|', $needles ) . '@', $request ) ) {
+
+		groundhogg_load_wp();
 
 		return;
 	}
 
-	$parts    = array_values( array_filter( explode( '/', $request ) ) );
-	$function = $parts[3];
+	if ( strpos( $request, '/gh/c/' ) !== false ) {
+		$function = 'click';
+	} else if ( strpos( $request, '/gh/o/' ) !== false ) {
+		$function = 'open';
+	} else {
+		// backwards compat
+		$parts    = array_values( array_filter( explode( '/', $request ) ) );
+		$function = $parts[3];
+	}
 
 	$caught_problem_user_agents = explode( PHP_EOL, file_get_contents( 'user-agents.txt' ) );
 
-    $known_problem_user_agents = [
+	$known_problem_user_agents = [
 		'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36',
 		'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-GB; rv:1.8.1.16) Gecko/20080702 Firefox/2.0.0.16',
 		'Mozilla/5.0 (Apple Mac OS X v10.9.3; Trident/7.0; rv:11.0) like Gecko',
@@ -215,9 +238,9 @@ function groundhogg_check_if_crawler_or_include_index() {
 						$_SERVER['HTTP_USER_AGENT'] === 'Mozilla/5.0'
 						&& empty( $_SERVER['HTTP_REFERER'] );
 				},
-                function () use ( $known_problem_user_agents ) {
-	                return in_array( $_SERVER['HTTP_USER_AGENT'], $known_problem_user_agents );
-                },
+				function () use ( $known_problem_user_agents ) {
+					return in_array( $_SERVER['HTTP_USER_AGENT'], $known_problem_user_agents );
+				},
 			];
 
 			foreach ( $request_checks as $request_check ) {
@@ -248,9 +271,7 @@ function groundhogg_check_if_crawler_or_include_index() {
 			break;
 	}
 
-	include __DIR__ . '/../index.php';
-
-
+	groundhogg_load_wp();
 }
 
 groundhogg_check_if_crawler_or_include_index();

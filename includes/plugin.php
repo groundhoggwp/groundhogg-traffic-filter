@@ -6,13 +6,17 @@ use Groundhogg\Extension;
 
 class Plugin extends Extension {
 
-
 	/**
 	 * Override the parent instance.
 	 *
 	 * @var Plugin
 	 */
 	public static $instance;
+
+	/**
+	 * @var Updater
+	 */
+	public $updater;
 
 	/**
 	 * Include any files.
@@ -29,12 +33,17 @@ class Plugin extends Extension {
 	 * @return void
 	 */
 	public function init_components() {
+
+		$this->updater = new Updater();
+
 		add_action( 'groundhogg/install_custom_rewrites', [ $this, 'rewrites' ] );
 	}
 
 	public function rewrites(){
 		if ( is_traffic_filter_installed() ){
 			add_rewrite_rule( 'gh/tracking/email', 'gh/index.php' );
+			add_rewrite_rule( 'gh/c/', 'gh/index.php' );
+			add_rewrite_rule( 'gh/o/', 'gh/index.php' );
 		}
 	}
 

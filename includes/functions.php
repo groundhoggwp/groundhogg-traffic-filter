@@ -31,10 +31,19 @@ function setup_constants( $file ) {
 	$logo     = wp_get_attachment_image_src( get_theme_mod( 'custom_logo' ), 'full' );
 	$logo     = empty( $logo ) ? '' : $logo[0];
 
+	$automatic_redirection_text = __( 'You will be redirected in %s seconds.', 'groundhogg-traffic-filter' );
+	$click_to_continue_text     = __( 'Or click <a href="%1$s">here</a> to continue to %2$s.', 'groundhogg-traffic-filter' );
+	$document_title             = sprintf( __( '%s - Traffic Filter', 'groundhogg-traffic-filter' ), get_bloginfo( 'name' ) );
+	$redirect_delay             = apply_filters( 'groundhogg/traffic_filter/redirect_delay', 3 );
+
 	$constants = "    
 const GH_LOGO_SRC       = '$logo';
-const GH_REDIRECT_DELAY = 3;
-const GH_VERIFIED_PARAM = '__verified';";
+const GH_DOCUMENT_TITLE = '$document_title';
+const GH_REDIRECT_DELAY = $redirect_delay;
+const GH_VERIFIED_PARAM = '__verified';
+const GH_AUTOMATIC_REDIRECTION_TEXT = '$automatic_redirection_text';
+const GH_CLICK_TO_CONTINUE_TEXT = '$click_to_continue_text';
+";
 
 	$contents = preg_replace( '/### REPLACE ###([^#]+)### END REPLACE ###/', $constants, $contents );
 
@@ -90,6 +99,22 @@ function remove_traffic_filter_file() {
 	install_custom_rewrites();
 }
 
+/**
+ * Upgrades the traffic filter files
+ *
+ * @return void
+ */
+function upgrade_traffic_filter_file() {
+
+	$folder = ABSPATH . 'gh';
+
+	copy( __DIR__ . '/../files/index.php', $folder . '/index.php' );
+	copy( __DIR__ . '/../files/catch.php', $folder . '/catch.php' );
+
+	setup_constants( $folder . '/index.php' );
+	setup_constants( $folder . '/catch.php' );
+}
+
 add_filter( 'groundhogg/admin/gh_tools/install_traffic_filter_process', function () {
 
 	if ( current_user_can( 'manage_options' ) ) {
@@ -124,19 +149,19 @@ add_action( 'groundhogg/tools/misc', __NAMESPACE__ . '\show_install_traffic_filt
 function show_install_traffic_filter_tool() {
 	?>
 
-    <div class="gh-panel">
-        <div class="gh-panel-header">
-            <h2><?php _e( 'Install Traffic Filter', 'groundhogg-tracking-filter' ); ?></h2>
-        </div>
-        <div class="inside">
-            <p><?php _e( 'Creates a special file that is loaded before WordPress and will automatically filter out potentially fake opens and clicks when tracking email engagement.', 'groundhogg-tracking-filter' ); ?></p>
+	<div class="gh-panel">
+		<div class="gh-panel-header">
+			<h2><?php _e( 'Install Traffic Filter', 'groundhogg-tracking-filter' ); ?></h2>
+		</div>
+		<div class="inside">
+			<p><?php _e( 'Creates a special file that is loaded before WordPress and will automatically filter out potentially fake opens and clicks when tracking email engagement.', 'groundhogg-tracking-filter' ); ?></p>
 			<?php if ( ! is_traffic_filter_installed() ): ?>
-                <p><?php echo html()->e( 'a', [
+				<p><?php echo html()->e( 'a', [
 						'class' => 'gh-button secondary',
 						'href'  => action_url( 'install_traffic_filter' ),
 					], __( 'Install Filter', 'groundhogg-tracking-filter' ) ) ?></p>
 			<?php else: ?>
-                <p class="display-flex gap-10"><?php
+				<p class="display-flex gap-10"><?php
 
 					echo html()->e( 'a', [
 						'class' => 'gh-button secondary',
@@ -150,8 +175,8 @@ function show_install_traffic_filter_tool() {
 
 					?></p>
 			<?php endif; ?>
-        </div>
-    </div>
+		</div>
+	</div>
 	<?php
 }
 
@@ -178,13 +203,13 @@ function add_bot_trap_link_to_emails() {
 		'font-size'       => '1px'
 	];
 
-    $preview_text = apply_filters( 'groundhogg/email_template/pre_header_text', '' );
-    $trap_text    = empty( $preview_text ) ? '' : '&nbsp;-&nbsp;';
+	$preview_text = apply_filters( 'groundhogg/email_template/pre_header_text', '' );
+	$trap_text    = empty( $preview_text ) ? '' : '&nbsp;-&nbsp;';
 
 	?>
-    <div style="display: none">
-        <a style="<?php echo array_to_css( $style ); ?>"
-           href="<?php echo $link ?>"><?php echo $trap_text; ?></a>
-    </div>
+	<div style="display: none">
+		<a style="<?php echo array_to_css( $style ); ?>"
+		   href="<?php echo $link ?>"><?php echo $trap_text; ?></a>
+	</div>
 	<?php
 }
