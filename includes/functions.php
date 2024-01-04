@@ -2,7 +2,6 @@
 
 namespace GroundhoggTrafficFilter;
 
-use Groundhogg\Plugin;
 use function Groundhogg\action_url;
 use function Groundhogg\array_to_css;
 use function Groundhogg\html;
@@ -180,14 +179,18 @@ function show_install_traffic_filter_tool() {
 	<?php
 }
 
-add_action( 'groundhogg/templates/email/content/before', __NAMESPACE__ . '\add_bot_trap_link_to_emails' );
+add_action( 'groundhogg/templates/email/content/before', __NAMESPACE__ . '\add_bot_trap_link_to_emails_for_legacy_emails' );
 
 /**
  * Adds a hidden link to all emails that bots would probably click on
  *
+ * Legacy emails only!
+ *
+ * @deprecated
+ *
  * @return void
  */
-function add_bot_trap_link_to_emails() {
+function add_bot_trap_link_to_emails_for_legacy_emails() {
 
 	// Do not add the link if the traffic filter is not installed
 	if ( ! is_traffic_filter_installed() ) {
@@ -207,9 +210,32 @@ function add_bot_trap_link_to_emails() {
 	$trap_text    = empty( $preview_text ) ? '' : '&nbsp;-&nbsp;';
 
 	?>
-	<div style="display: none">
-		<a style="<?php echo array_to_css( $style ); ?>"
-		   href="<?php echo $link ?>"><?php echo $trap_text; ?></a>
-	</div>
+    <div style="display: none">
+        <a style="<?php echo array_to_css( $style ); ?>" href="<?php echo $link ?>"><?php echo $trap_text; ?></a>
+    </div>
+	<?php
+}
+
+add_action( 'groundhogg/templates/email/preview-text/after', __NAMESPACE__ . '\add_bot_trap_after_preview_text' );
+
+/**
+ * Adds bot traffic filter after preview text in new templates
+ *
+ * @return void
+ */
+function add_bot_trap_after_preview_text() {
+
+	// Do not add the link if the traffic filter is not installed
+	if ( ! is_traffic_filter_installed() ) {
+		return;
+	}
+
+	$link = home_url( '/gh/catch.php' );
+
+	?>
+    <p style="display: none;line-height: 0;margin: 0;font-size: 1px;color: transparent;">
+        <a style="text-decoration: none; color: transparent;visibility: hidden;font-size: 1px"
+           href="<?php echo $link ?>"><?php bloginfo() ?></a>
+    </p>
 	<?php
 }
