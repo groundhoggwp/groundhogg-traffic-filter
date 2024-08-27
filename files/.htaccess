@@ -1,0 +1,16 @@
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteBase /gh/
+
+# Deny access to all .txt files
+<FilesMatch "\.txt$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Redirect all other requests starting with /gh/ to index.php
+RewriteRule ^index\.php$ - [L]
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ index.php [QSA,L]
+</IfModule>

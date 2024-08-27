@@ -3,7 +3,7 @@
  * Plugin Name: Groundhogg - Tracking Traffic Filter
  * Plugin URI:  https://www.groundhogg.io/?utm_source=wp-plugins&utm_campaign=plugin-uri&utm_medium=wp-dash
  * Description: Create a special file that handles tracking traffic and filters out "fake" clicks and open requests.
- * Version: 1.1
+ * Version: 1.2
  * Author: Groundhogg Inc.
  * Author URI: https://www.groundhogg.io/?utm_source=wp-plugins&utm_campaign=author-uri&utm_medium=wp-dash
  * Text Domain: groundhogg-traffic-filter
@@ -26,8 +26,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'GROUNDHOGG_TRAFFIC_FILTER_VERSION', '1.1' );
-define( 'GROUNDHOGG_TRAFFIC_FILTER_PREVIOUS_STABLE_VERSION', '1.0.2' );
+define( 'GROUNDHOGG_TRAFFIC_FILTER_VERSION', '1.2' );
+define( 'GROUNDHOGG_TRAFFIC_FILTER_PREVIOUS_STABLE_VERSION', '1.1' );
 define( 'GROUNDHOGG_TRAFFIC_FILTER_NAME', 'Tracking Traffic Filter' );
 
 define( 'GROUNDHOGG_TRAFFIC_FILTER__FILE__', __FILE__ );

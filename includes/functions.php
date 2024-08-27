@@ -3,9 +3,10 @@
 namespace GroundhoggTrafficFilter;
 
 use function Groundhogg\action_url;
-use function Groundhogg\array_to_css;
+use function Groundhogg\base64url_encode;
+use function Groundhogg\get_managed_page_name;
 use function Groundhogg\html;
-use function Groundhogg\install_custom_rewrites;
+use function Groundhogg\managed_page_url;
 use function Groundhogg\notices;
 
 /**
@@ -14,7 +15,10 @@ use function Groundhogg\notices;
  * @return bool
  */
 function is_traffic_filter_installed() {
-	return file_exists( ABSPATH . 'gh/index.php' );
+
+	$name = get_managed_page_name();
+
+	return file_exists( ABSPATH . $name . '/index.php' );
 }
 
 /**
@@ -34,10 +38,12 @@ function setup_constants( $file ) {
 	$click_to_continue_text     = __( 'Or click <a href="%1$s">here</a> to continue to %2$s.', 'groundhogg-traffic-filter' );
 	$document_title             = sprintf( __( '%s - Traffic Filter', 'groundhogg-traffic-filter' ), get_bloginfo( 'name' ) );
 	$redirect_delay             = apply_filters( 'groundhogg/traffic_filter/redirect_delay', 3 );
+	$page_root                  = get_managed_page_name();
 
 	$constants = "    
 const GH_LOGO_SRC       = '$logo';
 const GH_DOCUMENT_TITLE = '$document_title';
+const GH_MANAGED_PAGE_ROOT = '$page_root';
 const GH_REDIRECT_DELAY = $redirect_delay;
 const GH_VERIFIED_PARAM = '__verified';
 const GH_AUTOMATIC_REDIRECTION_TEXT = '$automatic_redirection_text';
@@ -47,7 +53,6 @@ const GH_CLICK_TO_CONTINUE_TEXT = '$click_to_continue_text';
 	$contents = preg_replace( '/### REPLACE ###([^#]+)### END REPLACE ###/', $constants, $contents );
 
 	file_put_contents( $file, $contents );
-
 }
 
 /**
@@ -58,26 +63,16 @@ const GH_CLICK_TO_CONTINUE_TEXT = '$click_to_continue_text';
  */
 function install_traffic_filter_file() {
 
-	$folder = ABSPATH . 'gh';
+	$folder = ABSPATH . get_managed_page_name();
 
 	if ( ! is_dir( $folder ) ) {
 		wp_mkdir_p( $folder );
 	}
 
 	copy( __DIR__ . '/../files/index.php', $folder . '/index.php' );
-	copy( __DIR__ . '/../files/catch.php', $folder . '/catch.php' );
-	file_put_contents( $folder . '/user-agents.txt', '' );
+	copy( __DIR__ . '/../files/.htaccess', $folder . '/.htaccess' );
 
 	setup_constants( $folder . '/index.php' );
-	setup_constants( $folder . '/catch.php' );
-
-	$exclusions = get_option( 'gh_url_tracking_exclusions' );
-	if ( ! preg_match( '@/gh/catch\.php\$@', $exclusions ) ) {
-		$exclusions .= "\n/gh/catch.php$";
-		update_option( 'gh_url_tracking_exclusions', $exclusions );
-	}
-
-	install_custom_rewrites();
 }
 
 /**
@@ -88,14 +83,13 @@ function install_traffic_filter_file() {
  */
 function remove_traffic_filter_file() {
 
-	$folder = ABSPATH . 'gh';
+	$folder = ABSPATH . get_managed_page_name();
 
 	unlink( $folder . '/index.php' );
-	unlink( $folder . '/catch.php' );
 	unlink( $folder . '/user-agents.txt' );
+	unlink( $folder . '/ips.txt' );
+	unlink( $folder . '/.htaccess' );
 	rmdir( $folder );
-
-	install_custom_rewrites();
 }
 
 /**
@@ -104,15 +98,32 @@ function remove_traffic_filter_file() {
  * @return void
  */
 function upgrade_traffic_filter_file() {
-
-	$folder = ABSPATH . 'gh';
-
+	$folder = ABSPATH . get_managed_page_name();
 	copy( __DIR__ . '/../files/index.php', $folder . '/index.php' );
-	copy( __DIR__ . '/../files/catch.php', $folder . '/catch.php' );
-
+	copy( __DIR__ . '/../files/.htaccess', $folder . '/.htaccess' );
 	setup_constants( $folder . '/index.php' );
-	setup_constants( $folder . '/catch.php' );
 }
+
+add_filter( 'groundhogg/is_url_excluded_from_tracking', __NAMESPACE__ . '\exclude_honeypot_url_from_tracking', 10, 2 );
+
+/**
+ * Make sure the /ruabot/ link is not tracked
+ *
+ * @param bool   $matched
+ * @param string $url
+ *
+ * @return bool
+ */
+function exclude_honeypot_url_from_tracking( $matched, $url ) {
+	if ( $matched ) {
+		return $matched;
+	}
+
+	$name = get_managed_page_name();
+
+	return str_contains( $url, "/$name/c/ruabot/" );
+}
+
 
 add_filter( 'groundhogg/admin/gh_tools/install_traffic_filter_process', function () {
 
@@ -148,19 +159,19 @@ add_action( 'groundhogg/tools/misc', __NAMESPACE__ . '\show_install_traffic_filt
 function show_install_traffic_filter_tool() {
 	?>
 
-	<div class="gh-panel">
-		<div class="gh-panel-header">
-			<h2><?php _e( 'Install Traffic Filter', 'groundhogg-tracking-filter' ); ?></h2>
-		</div>
-		<div class="inside">
-			<p><?php _e( 'Creates a special file that is loaded before WordPress and will automatically filter out potentially fake opens and clicks when tracking email engagement.', 'groundhogg-tracking-filter' ); ?></p>
+    <div class="gh-panel">
+        <div class="gh-panel-header">
+            <h2><?php _e( 'Install Traffic Filter', 'groundhogg-tracking-filter' ); ?></h2>
+        </div>
+        <div class="inside">
+            <p><?php _e( 'Creates a special file that is loaded before WordPress and will automatically filter out potentially fake opens and clicks when tracking email engagement.', 'groundhogg-tracking-filter' ); ?></p>
 			<?php if ( ! is_traffic_filter_installed() ): ?>
-				<p><?php echo html()->e( 'a', [
+                <p><?php echo html()->e( 'a', [
 						'class' => 'gh-button secondary',
 						'href'  => action_url( 'install_traffic_filter' ),
 					], __( 'Install Filter', 'groundhogg-tracking-filter' ) ) ?></p>
 			<?php else: ?>
-				<p class="display-flex gap-10"><?php
+                <p class="display-flex gap-10"><?php
 
 					echo html()->e( 'a', [
 						'class' => 'gh-button secondary',
@@ -174,68 +185,34 @@ function show_install_traffic_filter_tool() {
 
 					?></p>
 			<?php endif; ?>
-		</div>
-	</div>
-	<?php
-}
-
-add_action( 'groundhogg/templates/email/content/before', __NAMESPACE__ . '\add_bot_trap_link_to_emails_for_legacy_emails' );
-
-/**
- * Adds a hidden link to all emails that bots would probably click on
- *
- * Legacy emails only!
- *
- * @deprecated
- *
- * @return void
- */
-function add_bot_trap_link_to_emails_for_legacy_emails() {
-
-	// Do not add the link if the traffic filter is not installed
-	if ( ! is_traffic_filter_installed() ) {
-		return;
-	}
-
-	$link = home_url( '/gh/catch.php' );
-
-	$style = [
-		'text-decoration' => 'none',
-		'color'           => 'transparent',
-		'visibility'      => 'hidden',
-		'font-size'       => '1px'
-	];
-
-	$preview_text = apply_filters( 'groundhogg/email_template/pre_header_text', '' );
-	$trap_text    = empty( $preview_text ) ? '' : '&nbsp;-&nbsp;';
-
-	?>
-    <div style="display: none">
-        <a style="<?php echo array_to_css( $style ); ?>" href="<?php echo $link ?>"><?php echo $trap_text; ?></a>
+        </div>
     </div>
 	<?php
 }
 
-add_action( 'groundhogg/templates/email/preview-text/after', __NAMESPACE__ . '\add_bot_trap_after_preview_text' );
+// new emails
+add_action( 'groundhogg/templates/email/part/footer', __NAMESPACE__ . '\add_bot_trap' );
+// legacy emails
+add_action( 'groundhogg/templates/email/footer/before', __NAMESPACE__ . '\add_bot_trap' );
 
 /**
- * Adds bot traffic filter after preview text in new templates
+ * Adds bot traffic honey-pot after preview text in new templates
  *
  * @return void
  */
-function add_bot_trap_after_preview_text() {
+function add_bot_trap() {
 
 	// Do not add the link if the traffic filter is not installed
 	if ( ! is_traffic_filter_installed() ) {
 		return;
 	}
 
-	$link = home_url( '/gh/catch.php' );
+	$url = managed_page_url( '/c/ruabot/' . base64url_encode( wp_generate_uuid4() ) . '/?yes=1' );
+	$src = managed_page_url( '/o/pixelbot/' );
 
 	?>
-    <p style="display: none;line-height: 0;margin: 0;font-size: 1px;color: transparent;">
-        <a style="text-decoration: none; color: transparent;visibility: hidden;font-size: 1px"
-           href="<?php echo $link ?>"><?php bloginfo() ?></a>
-    </p>
+    <a title="Click here if you are a robot" href="<?php echo $url; ?>" style="display: none;visibility: hidden;">
+        <img alt="" src="<?php echo $src; ?>" height="0" width="0"/>
+    </a>
 	<?php
 }

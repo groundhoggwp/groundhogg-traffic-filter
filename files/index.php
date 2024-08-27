@@ -12,12 +12,13 @@
  */
 
 // Check if in the correct directory
-if ( ! file_exists( __DIR__ . '/../wp-config.php' ) || basename( __DIR__ ) !== 'gh' ) {
+if ( ! file_exists( __DIR__ . '/../wp-config.php' ) ) {
 	die();
 }
 
 ### REPLACE ###
 const GH_LOGO_SRC                   = '';
+const GH_MANAGED_PAGE_ROOT          = 'gh';
 const GH_DOCUMENT_TITLE             = 'Traffic Filter';
 const GH_REDIRECT_DELAY             = 3;
 const GH_VERIFIED_PARAM             = '__verified';
@@ -25,35 +26,253 @@ const GH_AUTOMATIC_REDIRECTION_TEXT = 'You will be redirected in %s seconds.';
 const GH_CLICK_TO_CONTINUE_TEXT     = 'Or click <a href="%1$s">here</a> to continue to %2$s.';
 ### END REPLACE ###
 
+const GH_USER_AGENT_FILE            = __DIR__ . '/user-agents.txt';
+const GH_IPS_FILE                   = __DIR__ . '/ips.txt';
+
+/**
+ * Check if a string is in a file
+ *
+ * @param string $text
+ * @param string $filePath
+ *
+ * @return bool
+ */
+function groundhogg_in_file( string $text, string $filePath ) {
+
+	$file = fopen( $filePath, 'r' );
+
+	if ( $file === false ) {
+		return false;
+	}
+
+	while ( ! feof( $file ) ) {
+		$line = fgets( $file );
+		if ( trim( $line ) == $text ) {
+			fclose( $file );
+
+			return true;
+		}
+	}
+
+	fclose( $file );
+
+	return false;
+}
+
+/**
+ * Add a string to a file if and only if it is not already present in the file
+ *
+ * @param string $text
+ * @param string $filePath
+ *
+ * @return void
+ */
+function groundhog_add_to_file( string $text, string $filePath ) {
+
+	if ( groundhogg_in_file( $text, $filePath ) ) {
+		return;
+	}
+
+	$file = fopen( $filePath, 'a' );
+	fwrite( $file, $text . PHP_EOL );
+	fclose( $file );
+}
+
+/**
+ * Given a string and a file, remove the line from the file
+ *
+ * @param string $text
+ * @param string $filePath
+ *
+ * @return void
+ */
+function groundhogg_remove_from_file( string $text, string $filePath ) {
+
+	// Open input file for reading
+	$inputFile = fopen( $filePath, 'r' );
+	if ( $inputFile === false ) {
+		return;
+	}
+
+	// Create a temporary file for writing
+	$tempFilePath = tempnam( sys_get_temp_dir(), 'user_agents' );
+	$tempFile     = fopen( $tempFilePath, 'w' );
+	if ( $tempFile === false ) {
+		return;
+	}
+
+	// Iterate through each line in the input file
+	while ( ( $line = fgets( $inputFile ) ) !== false ) {
+		// Remove newline character
+		$line = trim( $line );
+		// Write the line to the temporary file if it's not the user agent to remove
+		if ( $line !== $text ) {
+			fwrite( $tempFile, $line . PHP_EOL );
+		}
+	}
+
+	// Close files
+	fclose( $inputFile );
+	fclose( $tempFile );
+
+	// Rename the temporary file to the original file
+	rename( $tempFilePath, $filePath );
+}
+
+/**
+ * Save the user agent because it's a bot
+ *
+ * @param string $userAgent
+ *
+ * @return void
+ */
+function groundhogg_store_ua( string $userAgent = '' ) {
+
+	if ( empty( $userAgent ) ) {
+		$userAgent = $_SERVER['HTTP_USER_AGENT'];
+	}
+
+	$hashedUserAgent = hash( 'sha256', $userAgent );
+
+	groundhog_add_to_file( $hashedUserAgent, GH_USER_AGENT_FILE );
+}
+
+/**
+ * Check if a user agent is in our list
+ *
+ * @param string $userAgent
+ *
+ * @return bool
+ */
+function groundhogg_is_ua_stored( string $userAgent = '' ) {
+
+	if ( empty( $userAgent ) ) {
+		$userAgent = $_SERVER['HTTP_USER_AGENT'];
+	}
+
+	$hashedUserAgent = hash( 'sha256', $userAgent );
+
+	return groundhogg_in_file( $hashedUserAgent, GH_USER_AGENT_FILE );
+}
+
+/**
+ * Remove a user agent
+ *
+ * @param string $userAgent
+ *
+ * @return void
+ */
+function groundhogg_remove_ua( string $userAgent = '' ) {
+
+	if ( empty( $userAgent ) ) {
+		$userAgent = $_SERVER['HTTP_USER_AGENT'];
+	}
+
+	$hashedUserAgent = hash( 'sha256', $userAgent );
+
+	groundhogg_remove_from_file( $hashedUserAgent, GH_USER_AGENT_FILE );
+}
+
+/**
+ * Returns IPv6 or IPv4 address of the current visitor
+ *
+ * @return mixed|null
+ */
+function groundhogg_get_current_ip() {
+	$places = [
+		'REMOTE_ADDR',
+		'HTTP_X_FORWARDED_FOR',
+		'HTTP_CLIENT_IP',
+	];
+
+	$found = '';
+
+	foreach ( $places as $place ) {
+		if ( ! empty( $_SERVER[ $place ] ) ) {
+			$found = $_SERVER[ $place ];
+			break;
+		}
+	}
+
+	$ips = array_map( 'trim', explode( ',', $found ) );
+
+	return array_pop( $ips );
+}
+
+/**
+ * Store the IP address
+ *
+ * @param string $ip_address
+ *
+ * @return void
+ */
+function groundhogg_store_ip( string $ip_address = '' ) {
+
+	if ( empty( $ip_address ) ) {
+		$ip_address = groundhogg_get_current_ip();
+	}
+
+	groundhog_add_to_file( $ip_address, GH_IPS_FILE );
+}
+
+/**
+ * If the IP is stored
+ *
+ * @param string $ip_address
+ *
+ * @return bool
+ */
+function groundhogg_is_ip_stored( string $ip_address = '' ) {
+
+	if ( empty( $ip_address ) ) {
+		$ip_address = groundhogg_get_current_ip();
+	}
+
+	return groundhogg_in_file( $ip_address, GH_IPS_FILE );
+}
+
+/**
+ * @param string $ip_address
+ *
+ * @return void
+ */
+function groundhogg_remove_ip( string $ip_address = '' ) {
+
+	if ( empty( $ip_address ) ) {
+		$ip_address = groundhogg_get_current_ip();
+	}
+
+	groundhogg_remove_from_file( $ip_address, GH_IPS_FILE );
+}
+
 /**
  * Show the page to redirect to the ultimate destination with JavaScript
  * If the current request is from a link crawler, JavaScript will not execute!
  *
  * @return void
  */
-function groundhogg_show_redirect_page() {
+function groundhogg_show_redirect_page( $redirect_to = '' ) {
 
-	$full_url = "https://{$_SERVER['HTTP_HOST']}{$_SERVER['REQUEST_URI']}";
-
-	// has query string
-	if ( strpos( $full_url, '?' ) === false ) {
-		$full_url .= '?';
+	if ( empty( $redirect_to ) ) {
+		$redirect_to = $_SERVER['REQUEST_URI'];
 	}
 
-	$full_url .= '&' . GH_VERIFIED_PARAM . '=true';
+	// has query string
+	$redirect_to .= strpos( $redirect_to, '?' ) === false ? '?' : '&';
+	$redirect_to .= GH_VERIFIED_PARAM . '=true';
 
 	http_response_code( 200 );
 
 	?>
-	<!doctype html>
-	<html>
-	<head>
-		<title><?php echo GH_DOCUMENT_TITLE; ?></title>
-		<meta charset="UTF-8">
-		<meta name="viewport" content="width=device-width, initial-scale=1">
-		<meta name="robots" content="noindex">
-		<meta name='robots' content='noindex, follow'>
-		<script>
+    <!doctype html>
+    <html>
+    <head>
+        <title><?php echo GH_DOCUMENT_TITLE; ?></title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="robots" content="noindex">
+        <meta name='robots' content='noindex, follow'>
+        <script>
           window.addEventListener('load', () => {
             console.log('Loaded!')
 
@@ -67,7 +286,7 @@ function groundhogg_show_redirect_page() {
 
               if (delay < 1) {
                 document.querySelector('#main p').innerHTML = 'Redirecting you now...'
-                window.open('<?php echo $full_url ?>', '_self')
+                window.open('<?php echo $redirect_to ?>', '_self')
                 clearInterval(interval)
                 return
               }
@@ -81,8 +300,8 @@ function groundhogg_show_redirect_page() {
             })
 
           })
-		</script>
-		<style>
+        </script>
+        <style>
             html {
                 background-color: #F6F9FB;
                 position: initial !important;
@@ -126,18 +345,18 @@ function groundhogg_show_redirect_page() {
                 font-size: 14px;
             }
 
-		</style>
-	</head>
-	<body>
+        </style>
+    </head>
+    <body>
 	<?php if ( GH_LOGO_SRC ): ?>
-		<img id="logo" src="<?php echo GH_LOGO_SRC ?>">
+        <img id="logo" src="<?php echo GH_LOGO_SRC ?>">
 	<?php endif; ?>
-	<div id="main">
-		<p><?php printf( GH_AUTOMATIC_REDIRECTION_TEXT, sprintf( '<span id="delay">%s</span>', GH_REDIRECT_DELAY ) ); ?></p>
-	</div>
-	<p><?php printf( GH_CLICK_TO_CONTINUE_TEXT, '?' . GH_VERIFIED_PARAM . '=true', parse_url( $full_url, PHP_URL_HOST ) ); ?></p>
-	</body>
-	</html>
+    <div id="main">
+        <p><?php printf( GH_AUTOMATIC_REDIRECTION_TEXT, sprintf( '<span id="delay">%s</span>', GH_REDIRECT_DELAY ) ); ?></p>
+    </div>
+    <p><?php printf( GH_CLICK_TO_CONTINUE_TEXT, $redirect_to, $_SERVER['HTTP_HOST'] ); ?></p>
+    </body>
+    </html>
 	<?php
 
 	die();
@@ -183,12 +402,13 @@ function groundhogg_load_wp() {
  */
 function groundhogg_check_if_crawler_or_include_index() {
 
-	$request = $_SERVER['REQUEST_URI'];
+    header( 'X-Groundhogg: /' . GH_MANAGED_PAGE_ROOT . '/' );
 
+	$request = $_SERVER['REQUEST_URI'];
 	$needles = [
-		'/gh/tracking/email/',
-		'/gh/c/',
-		'/gh/o/',
+		'/' . GH_MANAGED_PAGE_ROOT . '/tracking/email/',
+		'/' . GH_MANAGED_PAGE_ROOT . '/c/',
+		'/' . GH_MANAGED_PAGE_ROOT . '/o/',
 	];
 
 	if ( ! preg_match( '@' . implode( '|', $needles ) . '@', $request ) ) {
@@ -198,9 +418,9 @@ function groundhogg_check_if_crawler_or_include_index() {
 		return;
 	}
 
-	if ( strpos( $request, '/gh/c/' ) !== false ) {
+	if ( strpos( $request, GH_MANAGED_PAGE_ROOT . '/c/' ) !== false ) {
 		$function = 'click';
-	} else if ( strpos( $request, '/gh/o/' ) !== false ) {
+	} else if ( strpos( $request, GH_MANAGED_PAGE_ROOT . '/o/' ) !== false ) {
 		$function = 'open';
 	} else {
 		// backwards compat
@@ -208,23 +428,14 @@ function groundhogg_check_if_crawler_or_include_index() {
 		$function = $parts[3];
 	}
 
-	$caught_problem_user_agents = explode( PHP_EOL, file_get_contents( 'user-agents.txt' ) );
-
-	$known_problem_user_agents = [
-		'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.0.0 Safari/537.36',
-		'Mozilla/5.0 (Windows; U; Windows NT 5.1; en-GB; rv:1.8.1.16) Gecko/20080702 Firefox/2.0.0.16',
-		'Mozilla/5.0 (Apple Mac OS X v10.9.3; Trident/7.0; rv:11.0) like Gecko',
-		'Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.1; Trident/6.0)',
-		'Barracuda Sentinel (EE)',
-		'Mozilla/5.0',
-	];
-
-	$known_problem_user_agents = array_merge( $caught_problem_user_agents, $known_problem_user_agents );
-
 	switch ( $function ) {
 		case 'open':
 
-			// known user agents that are crawling links or preloading images
+			// dummy image handling for the honeypot
+			if ( strpos( $request, GH_MANAGED_PAGE_ROOT . '/o/pixelbot' ) !== false ) {
+				groundhogg_show_pixel_image();
+			}
+
 			$request_checks = [
 				// Google Image pre-fetch (not the same as GoogleImageProxy)
 				function () {
@@ -235,14 +446,24 @@ function groundhogg_check_if_crawler_or_include_index() {
 				// Apple Mail Privacy Protection
 				function () {
 					return
-						$_SERVER['HTTP_USER_AGENT'] === 'Mozilla/5.0'
+						groundhogg_user_agent_is( 'Mozilla/5.0' )
 						&& empty( $_SERVER['HTTP_REFERER'] );
 				},
-				function () use ( $known_problem_user_agents ) {
-					return in_array( $_SERVER['HTTP_USER_AGENT'], $known_problem_user_agents );
+				// Any none get requests to the CLICK urls should be blocked
+				function () {
+					return $_SERVER['REQUEST_METHOD'] !== 'GET';
+				},
+				// is a known bot user agent
+				function () {
+					return groundhogg_is_ua_stored();
+				},
+				// IP is stored
+				function () {
+					return groundhogg_is_ip_stored();
 				},
 			];
 
+			// if any of the checks predict bot behaviour, do not track and output tracking image
 			foreach ( $request_checks as $request_check ) {
 				if ( call_user_func( $request_check ) ) {
 					groundhogg_show_pixel_image();
@@ -252,21 +473,46 @@ function groundhogg_check_if_crawler_or_include_index() {
 			break;
 		case 'click':
 
+			// already went through the redirect process, remove the user-agent
+			if ( isset( $_GET[ GH_VERIFIED_PARAM ] ) ) {
+				groundhogg_remove_ua();
+				groundhogg_remove_ip();
+				break;
+			}
+
+			// Honeypot bot trap
+			if ( strpos( $request, GH_MANAGED_PAGE_ROOT . '/c/ruabot' ) !== false ) {
+
+				// Store the user agent
+				groundhogg_store_ua();
+
+				// Store the IP
+				groundhogg_store_ip();
+
+				// Redirect to preferences center
+				groundhogg_show_redirect_page( "/gh/" );
+			}
+
 			$request_checks = [
+				// Any none get requests to the CLICK urls should be blocked
 				function () {
 					return $_SERVER['REQUEST_METHOD'] !== 'GET';
 				},
-				function () use ( $known_problem_user_agents ) {
-					return in_array( $_SERVER['HTTP_USER_AGENT'], $known_problem_user_agents );
+				// If the user agent is stored, then they might be a bot
+				function () {
+					return groundhogg_is_ua_stored();
+				},
+				// IP is stored
+				function () {
+					return groundhogg_is_ip_stored();
 				},
 			];
 
 			foreach ( $request_checks as $request_check ) {
-				if ( call_user_func( $request_check ) && ! isset( $_GET[ GH_VERIFIED_PARAM ] ) ) {
+				if ( call_user_func( $request_check ) ) {
 					groundhogg_show_redirect_page();
 				}
 			}
-
 
 			break;
 	}
