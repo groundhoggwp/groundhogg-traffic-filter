@@ -4,6 +4,7 @@ namespace GroundhoggTrafficFilter;
 
 use function Groundhogg\action_url;
 use function Groundhogg\base64url_encode;
+use function Groundhogg\files;
 use function Groundhogg\get_managed_page_name;
 use function Groundhogg\html;
 use function Groundhogg\managed_page_url;
@@ -24,6 +25,10 @@ function is_traffic_filter_installed() {
 /**
  * Add dynamically generated constants to special files
  *
+ * Values are exported with var_export() so they are always valid, safely
+ * quoted PHP literals no matter what characters they contain (apostrophes in
+ * the site name, backslashes, dollar signs, etc).
+ *
  * @param $file
  *
  * @return void
@@ -34,25 +39,38 @@ function setup_constants( $file ) {
 	$logo     = wp_get_attachment_image_src( get_theme_mod( 'custom_logo' ), 'full' );
 	$logo     = empty( $logo ) ? '' : $logo[0];
 
-	$automatic_redirection_text = __( 'You will be redirected in %s seconds.', 'groundhogg-traffic-filter' );
-	$click_to_continue_text     = __( 'Or click <a href="%1$s">here</a> to continue to %2$s.', 'groundhogg-traffic-filter' );
-	$document_title             = sprintf( __( '%s - Traffic Filter', 'groundhogg-traffic-filter' ), get_bloginfo( 'name' ) );
-	$redirect_delay             = apply_filters( 'groundhogg/traffic_filter/redirect_delay', 3 );
-	$page_root                  = get_managed_page_name();
+	$values = [
+		'GH_LOGO_SRC'                   => (string) $logo,
+		'GH_DOCUMENT_TITLE'             => sprintf( __( '%s - Traffic Filter', 'groundhogg-traffic-filter' ), get_bloginfo( 'name' ) ),
+		'GH_MANAGED_PAGE_ROOT'          => get_managed_page_name(),
+		'GH_REDIRECT_DELAY'             => max( 1, (int) apply_filters( 'groundhogg/traffic_filter/redirect_delay', 3 ) ),
+		'GH_VERIFIED_PARAM'             => '__verified',
+		/**
+		 * Request headers, in order of preference, that carry the real client IP when the site is behind a CDN or
+		 * reverse proxy. Return an empty array to only ever use REMOTE_ADDR.
+		 */
+		'GH_CLIENT_IP_HEADERS'          => array_values( array_filter( array_map( 'strval', (array) apply_filters( 'groundhogg/traffic_filter/client_ip_headers', [
+			'CF-Connecting-IP',
+			'True-Client-IP',
+			'X-Real-IP',
+			'X-Forwarded-For',
+		] ) ) ) ),
+		'GH_AUTOMATIC_REDIRECTION_TEXT' => __( 'You will be redirected in %s seconds.', 'groundhogg-traffic-filter' ),
+		'GH_CLICK_TO_CONTINUE_TEXT'     => __( 'Or click <a href="%1$s">here</a> to continue to %2$s.', 'groundhogg-traffic-filter' ),
+	];
 
-	$constants = "    
-const GH_LOGO_SRC       = '$logo';
-const GH_DOCUMENT_TITLE = '$document_title';
-const GH_MANAGED_PAGE_ROOT = '$page_root';
-const GH_REDIRECT_DELAY = $redirect_delay;
-const GH_VERIFIED_PARAM = '__verified';
-const GH_AUTOMATIC_REDIRECTION_TEXT = '$automatic_redirection_text';
-const GH_CLICK_TO_CONTINUE_TEXT = '$click_to_continue_text';
-";
+	$constants = "\n";
 
-	$contents = preg_replace( '/### REPLACE ###([^#]+)### END REPLACE ###/', $constants, $contents );
+	foreach ( $values as $name => $value ) {
+		$constants .= sprintf( "const %s = %s;\n", $name, var_export( $value, true ) );
+	}
 
-	file_put_contents( $file, $contents );
+	// Use a callback so $ and \ in the replacement are never interpreted as backreferences
+	$contents = preg_replace_callback( '/### REPLACE ###.*?### END REPLACE ###/s', function () use ( $constants ) {
+		return "### REPLACE ###" . $constants . "### END REPLACE ###";
+	}, $contents );
+
+	files()->put( $file, $contents );
 }
 
 /**
@@ -83,13 +101,15 @@ function install_traffic_filter_file() {
  */
 function remove_traffic_filter_file() {
 
-	$folder = ABSPATH . get_managed_page_name();
+	$folder = untrailingslashit( ABSPATH . get_managed_page_name() );
 
-	unlink( $folder . '/index.php' );
-	unlink( $folder . '/user-agents.txt' );
-	unlink( $folder . '/ips.txt' );
-	unlink( $folder . '/.htaccess' );
-	rmdir( $folder );
+	// Never touch anything unless it is actually our folder
+	if ( ! is_dir( $folder ) || ! file_exists( $folder . '/index.php' ) ) {
+		return;
+	}
+
+	// Recursive removal, includes dotfiles like .htaccess and the bot-fingerprints folder
+	files()->rmdir( $folder, true );
 }
 
 /**
@@ -102,6 +122,22 @@ function upgrade_traffic_filter_file() {
 	copy( __DIR__ . '/../files/index.php', $folder . '/index.php' );
 	copy( __DIR__ . '/../files/.htaccess', $folder . '/.htaccess' );
 	setup_constants( $folder . '/index.php' );
+}
+
+/**
+ * Remove files created by versions before 1.3 which are no longer used
+ *
+ * @return void
+ */
+function remove_legacy_files() {
+
+	$folder = ABSPATH . get_managed_page_name();
+
+	foreach ( [ 'user-agents.txt', 'ips.txt', 'user-agents-hashed.txt', 'catch.php' ] as $file ) {
+		if ( is_file( "$folder/$file" ) ) {
+			wp_delete_file( "$folder/$file" );
+		}
+	}
 }
 
 add_filter( 'groundhogg/is_url_excluded_from_tracking', __NAMESPACE__ . '\exclude_honeypot_url_from_tracking', 10, 2 );
@@ -191,7 +227,8 @@ function show_install_traffic_filter_tool() {
 }
 
 // new emails
-add_action( 'groundhogg/templates/email/part/footer', __NAMESPACE__ . '\add_bot_trap' );
+//add_action( 'groundhogg/templates/email/part/footer', __NAMESPACE__ . '\add_bot_trap' );
+add_action( 'groundhogg/templates/email/part/body-open', __NAMESPACE__ . '\add_bot_trap' );
 // legacy emails
 add_action( 'groundhogg/templates/email/footer/before', __NAMESPACE__ . '\add_bot_trap' );
 
@@ -215,4 +252,35 @@ function add_bot_trap() {
         <img alt="" src="<?php echo $src; ?>" height="0" width="0"/>
     </a>
 	<?php
+}
+
+
+add_action( 'groundhogg/cleanup', __NAMESPACE__ . '\cleanup_old_fingerprints' );
+
+/**
+ * Clean up expired fingerprints
+ *
+ * @return void
+ */
+function cleanup_old_fingerprints() {
+
+    if ( ! is_traffic_filter_installed() ){
+        return;
+    }
+
+	$cutoff = time() - ( 60 * 2 );
+
+	$folder = ABSPATH . get_managed_page_name();
+
+	foreach ( glob( $folder . '/bot-fingerprints/*' ) ?: [] as $file ) {
+
+		if (
+			is_file( $file )
+			&&
+			filemtime( $file ) < $cutoff
+		) {
+			files()->delete_files( $file );
+		}
+	}
+
 }

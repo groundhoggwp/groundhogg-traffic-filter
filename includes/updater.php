@@ -105,6 +105,20 @@ class Updater extends \Groundhogg\Updater{
 
 					upgrade_traffic_filter_file();
 				}
+			],
+			'1.3' => [
+				'automatic' => true,
+				'description' => __( 'Track suspected bots with short-lived fingerprints instead of permanent user-agent and IP lists, and detect the real visitor IP behind CDNs.', 'groundhogg-traffic-filter' ),
+				'callback' => function () {
+
+					if ( ! is_traffic_filter_installed() ){
+						return;
+					}
+
+					upgrade_traffic_filter_file();
+
+					remove_legacy_files();
+				}
 			]
 		];
 	}
