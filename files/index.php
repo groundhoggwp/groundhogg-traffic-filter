@@ -21,6 +21,7 @@ const GH_DOCUMENT_TITLE             = 'Traffic Filter';
 const GH_REDIRECT_DELAY             = 3;
 const GH_VERIFIED_PARAM             = '__verified';
 const GH_CLIENT_IP_HEADERS          = [ 'CF-Connecting-IP', 'True-Client-IP', 'X-Real-IP', 'X-Forwarded-For' ];
+const GH_TRUSTED_PROXIES            = [ '127.0.0.0/8', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '::1/128', 'fc00::/7', '173.245.48.0/20', '103.21.244.0/22', '103.22.200.0/22', '103.31.4.0/22', '141.101.64.0/18', '108.162.192.0/18', '190.93.240.0/20', '188.114.96.0/20', '197.234.240.0/22', '198.41.128.0/17', '162.158.0.0/15', '104.16.0.0/13', '104.24.0.0/14', '172.64.0.0/13', '131.0.72.0/22', '2400:cb00::/32', '2606:4700::/32', '2803:f800::/32', '2405:b500::/32', '2405:8100::/32', '2a06:98c0::/29', '2c0f:f248::/32' ];
 const GH_AUTOMATIC_REDIRECTION_TEXT = 'You will be redirected in %s seconds.';
 const GH_CLICK_TO_CONTINUE_TEXT     = 'Or click <a href="%1$s">here</a> to continue to %2$s.';
 ### END REPLACE ###
@@ -45,17 +46,93 @@ function groundhogg_get_user_agent(): string {
 }
 
 /**
+ * Check whether an IP falls inside a CIDR range (or matches a single IP).
+ *
+ * @param string $ip
+ * @param string $range e.g. 173.245.48.0/20, 2400:cb00::/32 or 203.0.113.7
+ *
+ * @return bool
+ */
+function groundhogg_ip_in_range( string $ip, string $range ): bool {
+
+	if ( strpos( $range, '/' ) === false ) {
+		$range .= strpos( $range, ':' ) === false ? '/32' : '/128';
+	}
+
+	[ $subnet, $bits ] = explode( '/', $range, 2 );
+
+	$ip_bin     = @inet_pton( $ip );
+	$subnet_bin = @inet_pton( $subnet );
+	$bits       = (int) $bits;
+
+	// Invalid input, or comparing IPv4 with IPv6
+	if ( ! $ip_bin || ! $subnet_bin || strlen( $ip_bin ) !== strlen( $subnet_bin ) ) {
+		return false;
+	}
+
+	if ( $bits < 0 || $bits > strlen( $ip_bin ) * 8 ) {
+		return false;
+	}
+
+	$bytes = intdiv( $bits, 8 );
+
+	if ( substr( $ip_bin, 0, $bytes ) !== substr( $subnet_bin, 0, $bytes ) ) {
+		return false;
+	}
+
+	$remainder = $bits % 8;
+
+	if ( ! $remainder ) {
+		return true;
+	}
+
+	$mask = ( 0xFF << ( 8 - $remainder ) ) & 0xFF;
+
+	return ( ord( $ip_bin[ $bytes ] ) & $mask ) === ( ord( $subnet_bin[ $bytes ] ) & $mask );
+}
+
+/**
+ * Whether an IP belongs to a proxy we trust to report the client IP.
+ *
+ * @param string $ip
+ *
+ * @return bool
+ */
+function groundhogg_is_trusted_proxy( string $ip ): bool {
+
+	foreach ( GH_TRUSTED_PROXIES as $range ) {
+		if ( groundhogg_ip_in_range( $ip, (string) $range ) ) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+/**
  * Get the IP of the visitor making the current request.
  *
- * Behind a CDN or reverse proxy, REMOTE_ADDR is the proxy's IP, which is
- * shared by many unrelated visitors. To avoid flagging real users because a
- * bot happened to come through the same edge node, prefer the client IP
- * reported by the proxy (see GH_CLIENT_IP_HEADERS), and only fall back to
- * REMOTE_ADDR when no usable header is present.
+ * REMOTE_ADDR is the only value the client cannot forge. Behind a CDN or
+ * reverse proxy it is the proxy's IP, which is shared by many unrelated
+ * visitors, so the client IP headers (see GH_CLIENT_IP_HEADERS) are used,
+ * but only when REMOTE_ADDR is a trusted proxy (see GH_TRUSTED_PROXIES).
+ * Otherwise anyone could send a fake header to dodge a bot fingerprint or
+ * get another visitor's IP flagged.
  *
  * @return string
  */
 function groundhogg_get_current_ip(): string {
+
+	$remote = trim( (string) ( $_SERVER['REMOTE_ADDR'] ?? '' ) );
+
+	if ( ! filter_var( $remote, FILTER_VALIDATE_IP ) ) {
+		return '';
+	}
+
+	// Request did not come through a proxy we trust, headers can't be trusted either
+	if ( ! groundhogg_is_trusted_proxy( $remote ) ) {
+		return $remote;
+	}
 
 	foreach ( GH_CLIENT_IP_HEADERS as $header ) {
 
@@ -65,25 +142,28 @@ function groundhogg_get_current_ip(): string {
 			continue;
 		}
 
-		// X-Forwarded-For style lists are "client, proxy1, proxy2"
-		foreach ( explode( ',', (string) $_SERVER[ $key ] ) as $candidate ) {
+		// X-Forwarded-For style lists are "client, proxy1, proxy2". Anything left of
+		// the hops we trust could have been sent by the client, so read right to left
+		// and take the first address that isn't one of our proxies.
+		$hops = array_reverse( explode( ',', (string) $_SERVER[ $key ] ) );
+
+		foreach ( $hops as $candidate ) {
 
 			$candidate = trim( $candidate );
 
-			// Only accept public addresses, a private one is just another hop
-			if ( filter_var(
-				$candidate,
-				FILTER_VALIDATE_IP,
-				FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE
-			) ) {
-				return $candidate;
+			if ( ! filter_var( $candidate, FILTER_VALIDATE_IP ) ) {
+				break;
 			}
+
+			if ( groundhogg_is_trusted_proxy( $candidate ) ) {
+				continue;
+			}
+
+			return $candidate;
 		}
 	}
 
-	$remote = trim( (string) ( $_SERVER['REMOTE_ADDR'] ?? '' ) );
-
-	return filter_var( $remote, FILTER_VALIDATE_IP ) ? $remote : '';
+	return $remote;
 }
 
 /**

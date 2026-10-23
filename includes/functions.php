@@ -55,6 +55,41 @@ function setup_constants( $file ) {
 			'X-Real-IP',
 			'X-Forwarded-For',
 		] ) ) ) ),
+		/**
+		 * IPs or CIDR ranges of proxies allowed to report the client IP through the headers above. Requests from
+		 * anywhere else always use REMOTE_ADDR. Defaults to loopback, private networks and Cloudflare. Add the
+		 * ranges of any other CDN or load balancer in front of the site.
+		 */
+		'GH_TRUSTED_PROXIES'            => array_values( array_filter( array_map( 'strval', (array) apply_filters( 'groundhogg/traffic_filter/trusted_proxies', [
+			'127.0.0.0/8',
+			'10.0.0.0/8',
+			'172.16.0.0/12',
+			'192.168.0.0/16',
+			'::1/128',
+			'fc00::/7',
+			'173.245.48.0/20',
+			'103.21.244.0/22',
+			'103.22.200.0/22',
+			'103.31.4.0/22',
+			'141.101.64.0/18',
+			'108.162.192.0/18',
+			'190.93.240.0/20',
+			'188.114.96.0/20',
+			'197.234.240.0/22',
+			'198.41.128.0/17',
+			'162.158.0.0/15',
+			'104.16.0.0/13',
+			'104.24.0.0/14',
+			'172.64.0.0/13',
+			'131.0.72.0/22',
+			'2400:cb00::/32',
+			'2606:4700::/32',
+			'2803:f800::/32',
+			'2405:b500::/32',
+			'2405:8100::/32',
+			'2a06:98c0::/29',
+			'2c0f:f248::/32',
+		] ) ) ) ),
 		'GH_AUTOMATIC_REDIRECTION_TEXT' => __( 'You will be redirected in %s seconds.', 'groundhogg-traffic-filter' ),
 		'GH_CLICK_TO_CONTINUE_TEXT'     => __( 'Or click <a href="%1$s">here</a> to continue to %2$s.', 'groundhogg-traffic-filter' ),
 	];
