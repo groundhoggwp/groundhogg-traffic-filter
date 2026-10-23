@@ -258,6 +258,30 @@ function groundhogg_esc_url_attr( string $url ): string {
 }
 
 /**
+ * Only allow a same-host, root-relative path as the redirect target.
+ *
+ * Rejects absolute URLs, protocol-relative URLs (//evil.com and /\evil.com),
+ * schemes such as javascript: or data:, and control characters, which
+ * browsers strip before parsing (so "/\t/evil.com" would become "//evil.com").
+ *
+ * @param string $path
+ *
+ * @return string
+ */
+function groundhogg_sanitize_redirect_path( string $path ): string {
+
+	if ( preg_match( '/[\x00-\x1F\x7F]/', $path ) ) {
+		return '/';
+	}
+
+	if ( ! preg_match( '@^/(?![/\\\\])@', $path ) ) {
+		return '/';
+	}
+
+	return $path;
+}
+
+/**
  * Show an intermediate page which requires browser-side JavaScript
  * before the tracking request is allowed through.
  *
@@ -270,6 +294,8 @@ function groundhogg_show_redirect_page( string $redirect_to = '' ): void {
 	if ( ! $redirect_to ) {
 		$redirect_to = $_SERVER['REQUEST_URI'] ?? '/';
 	}
+
+	$redirect_to = groundhogg_sanitize_redirect_path( (string) $redirect_to );
 
 	$redirect_to = groundhogg_add_query_arg(
 		$redirect_to,
