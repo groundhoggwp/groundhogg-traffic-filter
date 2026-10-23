@@ -97,7 +97,7 @@ function install_traffic_filter_file() {
  * Remove the gh/index.php file and folder from the root WordPress directory
  * And then save rewrites
  *
- * @return void
+ * @return bool true if the folder is gone, false if it could not be removed
  */
 function remove_traffic_filter_file() {
 
@@ -105,11 +105,16 @@ function remove_traffic_filter_file() {
 
 	// Never touch anything unless it is actually our folder
 	if ( ! is_dir( $folder ) || ! file_exists( $folder . '/index.php' ) ) {
-		return;
+		return true;
 	}
 
 	// Recursive removal, includes dotfiles like .htaccess and the bot-fingerprints folder
 	files()->rmdir( $folder, true );
+
+	// A concurrent removal may have deleted it first, so check the result rather than the return value
+	clearstatcache();
+
+	return ! file_exists( $folder . '/index.php' );
 }
 
 /**
@@ -176,7 +181,11 @@ add_filter( 'groundhogg/admin/gh_tools/install_traffic_filter_process', function
 add_filter( 'groundhogg/admin/gh_tools/remove_traffic_filter_process', function () {
 
 	if ( current_user_can( 'manage_options' ) ) {
-		remove_traffic_filter_file();
+		if ( ! remove_traffic_filter_file() ) {
+			notices()->add( 'error', sprintf( __( 'The traffic filter could not be removed. Check the permissions of the %s folder in the WordPress root directory.', 'groundhogg-tracking-filter' ), '<code>/' . esc_html( get_managed_page_name() ) . '/</code>' ), 'error' );
+
+			return true;
+		}
 
 		notices()->add( 'success', __( 'Traffic filter removed!', 'groundhogg-tracking-filter' ) );
 	}
