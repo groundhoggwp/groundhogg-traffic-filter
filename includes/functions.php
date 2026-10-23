@@ -29,13 +29,22 @@ function is_traffic_filter_installed() {
  * quoted PHP literals no matter what characters they contain (apostrophes in
  * the site name, backslashes, dollar signs, etc).
  *
- * @param $file
+ * The finished file is swapped in atomically, so a tracking request never
+ * loads a half-written file or the template with the default constants.
  *
- * @return void
+ * @param string $file     the file to write
+ * @param string $template optional file to read from, defaults to $file
+ *
+ * @return bool
  */
-function setup_constants( $file ) {
+function setup_constants( $file, $template = '' ) {
 
-	$contents = file_get_contents( $file );
+	$contents = file_get_contents( $template ?: $file );
+
+	if ( $contents === false ) {
+		return false;
+	}
+
 	$logo     = wp_get_attachment_image_src( get_theme_mod( 'custom_logo' ), 'full' );
 	$logo     = empty( $logo ) ? '' : $logo[0];
 
@@ -70,7 +79,42 @@ function setup_constants( $file ) {
 		return "### REPLACE ###" . $constants . "### END REPLACE ###";
 	}, $contents );
 
-	files()->put( $file, $contents );
+	return write_file_atomically( $file, $contents );
+}
+
+/**
+ * Write a file atomically.
+ *
+ * Requests to the traffic filter are served straight from the file without
+ * WordPress, so writing it in place lets a concurrent request read a partial
+ * file and fatal. Instead write to a temp file in the same folder (so rename()
+ * stays on the same filesystem) and then rename() it over the target, which
+ * replaces it in a single step.
+ *
+ * @param string $file
+ * @param string $contents
+ *
+ * @return bool
+ */
+function write_file_atomically( $file, $contents ) {
+
+	$temp = $file . '.' . wp_generate_password( 12, false ) . '.tmp';
+
+	if ( file_put_contents( $temp, $contents, LOCK_EX ) !== strlen( $contents ) ) {
+		@unlink( $temp );
+
+		return false;
+	}
+
+	@chmod( $temp, 0644 );
+
+	if ( ! @rename( $temp, $file ) ) {
+		@unlink( $temp );
+
+		return false;
+	}
+
+	return true;
 }
 
 /**
@@ -87,10 +131,9 @@ function install_traffic_filter_file() {
 		wp_mkdir_p( $folder );
 	}
 
-	copy( __DIR__ . '/../files/index.php', $folder . '/index.php' );
-	copy( __DIR__ . '/../files/.htaccess', $folder . '/.htaccess' );
+	write_file_atomically( $folder . '/.htaccess', file_get_contents( __DIR__ . '/../files/.htaccess' ) );
 
-	setup_constants( $folder . '/index.php' );
+	setup_constants( $folder . '/index.php', __DIR__ . '/../files/index.php' );
 }
 
 /**
@@ -119,9 +162,8 @@ function remove_traffic_filter_file() {
  */
 function upgrade_traffic_filter_file() {
 	$folder = ABSPATH . get_managed_page_name();
-	copy( __DIR__ . '/../files/index.php', $folder . '/index.php' );
-	copy( __DIR__ . '/../files/.htaccess', $folder . '/.htaccess' );
-	setup_constants( $folder . '/index.php' );
+	write_file_atomically( $folder . '/.htaccess', file_get_contents( __DIR__ . '/../files/.htaccess' ) );
+	setup_constants( $folder . '/index.php', __DIR__ . '/../files/index.php' );
 }
 
 /**
