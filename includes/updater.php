@@ -119,6 +119,19 @@ class Updater extends \Groundhogg\Updater{
 
 					remove_legacy_files();
 				}
+			],
+			'1.3.1' => [
+				'automatic' => true,
+				'description' => __( 'Only trust visitor IP headers from known proxies, restrict the redirect page to same-site paths, and write the filter files atomically.', 'groundhogg-traffic-filter' ),
+				'callback' => function () {
+
+					if ( ! is_traffic_filter_installed() ){
+						return;
+					}
+
+					// Regenerate gh/index.php and gh/.htaccess so the hardened version goes live
+					upgrade_traffic_filter_file();
+				}
 			]
 		];
 	}
