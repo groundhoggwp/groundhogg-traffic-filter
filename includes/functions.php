@@ -64,6 +64,20 @@ function setup_constants( $file, $template = '' ) {
 			'X-Real-IP',
 			'X-Forwarded-For',
 		] ) ) ) ),
+		/**
+		 * IPs or CIDR ranges of proxies allowed to report the client IP through the headers above. Requests from
+		 * anywhere else always use REMOTE_ADDR. Defaults to loopback and private networks, Cloudflare is always trusted.
+		 * Add the ranges of any other CDN or load balancer in front of the site. CF-Connecting-IP and True-Client-IP
+		 * are only read for requests that come from Cloudflare.
+		 */
+		'GH_TRUSTED_PROXIES'            => array_values( array_filter( array_map( 'strval', (array) apply_filters( 'groundhogg/traffic_filter/trusted_proxies', [
+			'127.0.0.0/8',
+			'10.0.0.0/8',
+			'172.16.0.0/12',
+			'192.168.0.0/16',
+			'::1/128',
+			'fc00::/7',
+		] ) ) ) ),
 		'GH_AUTOMATIC_REDIRECTION_TEXT' => __( 'You will be redirected in %s seconds.', 'groundhogg-traffic-filter' ),
 		'GH_CLICK_TO_CONTINUE_TEXT'     => __( 'Or click <a href="%1$s">here</a> to continue to %2$s.', 'groundhogg-traffic-filter' ),
 	];
