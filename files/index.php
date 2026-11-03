@@ -116,7 +116,8 @@ function groundhogg_ensure_fingerprint_dir(): bool {
 		return true;
 	}
 
-	return @mkdir( GH_BOT_FINGERPRINT_DIR, 0755, true );
+	// Another request may create it between the check and mkdir()
+	return @mkdir( GH_BOT_FINGERPRINT_DIR, 0755, true ) || is_dir( GH_BOT_FINGERPRINT_DIR );
 }
 
 /**
