@@ -21,7 +21,7 @@ const GH_DOCUMENT_TITLE             = 'Traffic Filter';
 const GH_REDIRECT_DELAY             = 3;
 const GH_VERIFIED_PARAM             = '__verified';
 const GH_CLIENT_IP_HEADERS          = [ 'CF-Connecting-IP', 'True-Client-IP', 'X-Real-IP', 'X-Forwarded-For' ];
-const GH_TRUSTED_PROXIES            = [ '127.0.0.0/8', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '::1/128', 'fc00::/7', '173.245.48.0/20', '103.21.244.0/22', '103.22.200.0/22', '103.31.4.0/22', '141.101.64.0/18', '108.162.192.0/18', '190.93.240.0/20', '188.114.96.0/20', '197.234.240.0/22', '198.41.128.0/17', '162.158.0.0/15', '104.16.0.0/13', '104.24.0.0/14', '172.64.0.0/13', '131.0.72.0/22', '2400:cb00::/32', '2606:4700::/32', '2803:f800::/32', '2405:b500::/32', '2405:8100::/32', '2a06:98c0::/29', '2c0f:f248::/32' ];
+const GH_TRUSTED_PROXIES            = [ '127.0.0.0/8', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '::1/128', 'fc00::/7' ];
 const GH_AUTOMATIC_REDIRECTION_TEXT = 'You will be redirected in %s seconds.';
 const GH_CLICK_TO_CONTINUE_TEXT     = 'Or click <a href="%1$s">here</a> to continue to %2$s.';
 ### END REPLACE ###
@@ -35,6 +35,20 @@ const GH_BOT_FINGERPRINT_TTL = 2 * 60;
  * Directory containing temporary bot fingerprints.
  */
 const GH_BOT_FINGERPRINT_DIR = __DIR__ . '/bot-fingerprints';
+
+/**
+ * Cloudflare's published edge ranges (https://www.cloudflare.com/ips/).
+ *
+ * Always trusted, and the only proxies allowed to set GH_CLOUDFLARE_IP_HEADERS.
+ */
+const GH_CLOUDFLARE_PROXIES = [ '173.245.48.0/20', '103.21.244.0/22', '103.22.200.0/22', '103.31.4.0/22', '141.101.64.0/18', '108.162.192.0/18', '190.93.240.0/20', '188.114.96.0/20', '197.234.240.0/22', '198.41.128.0/17', '162.158.0.0/15', '104.16.0.0/13', '104.24.0.0/14', '172.64.0.0/13', '131.0.72.0/22', '2400:cb00::/32', '2606:4700::/32', '2803:f800::/32', '2405:b500::/32', '2405:8100::/32', '2a06:98c0::/29', '2c0f:f248::/32' ];
+
+/**
+ * Single-value headers that only Cloudflare overwrites. Any other proxy passes a
+ * client-supplied copy straight through, so they are ignored unless the request
+ * really came from a Cloudflare edge.
+ */
+const GH_CLOUDFLARE_IP_HEADERS = [ 'CF-Connecting-IP', 'True-Client-IP' ];
 
 /**
  * Get the current request user agent.
@@ -60,6 +74,10 @@ function groundhogg_ip_in_range( string $ip, string $range ): bool {
 	}
 
 	[ $subnet, $bits ] = explode( '/', $range, 2 );
+
+	if ( ! ctype_digit( (string) $bits ) ) {
+		return false;
+	}
 
 	$ip_bin     = @inet_pton( $ip );
 	$subnet_bin = @inet_pton( $subnet );
@@ -100,8 +118,30 @@ function groundhogg_ip_in_range( string $ip, string $range ): bool {
  */
 function groundhogg_is_trusted_proxy( string $ip ): bool {
 
+	if ( groundhogg_is_cloudflare_proxy( $ip ) ) {
+		return true;
+	}
+
 	foreach ( GH_TRUSTED_PROXIES as $range ) {
 		if ( groundhogg_ip_in_range( $ip, (string) $range ) ) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+/**
+ * Whether an IP belongs to a Cloudflare edge server.
+ *
+ * @param string $ip
+ *
+ * @return bool
+ */
+function groundhogg_is_cloudflare_proxy( string $ip ): bool {
+
+	foreach ( GH_CLOUDFLARE_PROXIES as $range ) {
+		if ( groundhogg_ip_in_range( $ip, $range ) ) {
 			return true;
 		}
 	}
@@ -134,9 +174,16 @@ function groundhogg_get_current_ip(): string {
 		return $remote;
 	}
 
+	$from_cloudflare = groundhogg_is_cloudflare_proxy( $remote );
+
 	foreach ( GH_CLIENT_IP_HEADERS as $header ) {
 
-		$key = 'HTTP_' . strtoupper( str_replace( '-', '_', $header ) );
+		// Behind any other proxy these could be copied straight from the client's request
+		if ( ! $from_cloudflare && in_array( $header, GH_CLOUDFLARE_IP_HEADERS, true ) ) {
+			continue;
+		}
+
+		$key ='HTTP_' . strtoupper( str_replace( '-', '_', $header ) );
 
 		if ( empty( $_SERVER[ $key ] ) ) {
 			continue;
